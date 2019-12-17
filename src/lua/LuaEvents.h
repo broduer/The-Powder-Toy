@@ -15,6 +15,7 @@ protected:
 
 public:
 	virtual int PushToStack(lua_State * l) = 0;
+	virtual ~Event() = default;
 };
 
 class TextInputEvent : public Event

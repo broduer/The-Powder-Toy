@@ -1,6 +1,3 @@
-#include "common/tpt-minmax.h"
-
-#include <map>
 #include <ctime>
 #include <climits>
 #ifdef WIN
@@ -20,7 +17,6 @@
 #if defined(LIN)
 #include "icon.h"
 #endif
-#include <csignal>
 #include <stdexcept>
 
 #ifndef WIN
@@ -43,6 +39,7 @@
 
 #include "gui/game/GameController.h"
 #include "gui/game/GameView.h"
+#include "gui/font/FontEditor.h"
 #include "gui/dialogues/ErrorMessage.h"
 #include "gui/dialogues/ConfirmPrompt.h"
 #include "gui/interface/Keys.h"
@@ -77,48 +74,6 @@ ByteString ClipboardPull()
 int GetModifiers()
 {
 	return SDL_GetModState();
-}
-
-void LoadWindowPosition()
-{
-	int savedWindowX = Client::Ref().GetPrefInteger("WindowX", INT_MAX);
-	int savedWindowY = Client::Ref().GetPrefInteger("WindowY", INT_MAX);
-
-	int borderTop, borderLeft;
-	SDL_GetWindowBordersSize(sdl_window, &borderTop, &borderLeft, nullptr, nullptr);
-	// Sometimes (Windows), the border size may not be reported for 200+ frames
-	// So just have a default of 5 to ensure the window doesn't get stuck where it can't be moved
-	if (borderTop == 0)
-		borderTop = 5;
-
-	int numDisplays = SDL_GetNumVideoDisplays();
-	SDL_Rect displayBounds;
-	bool ok = false;
-	for (int i = 0; i < numDisplays; i++)
-	{
-		SDL_GetDisplayBounds(i, &displayBounds);
-		if (savedWindowX + borderTop > displayBounds.x && savedWindowY + borderLeft > displayBounds.y &&
-				savedWindowX + borderTop < displayBounds.x + displayBounds.w &&
-				savedWindowY + borderLeft < displayBounds.y + displayBounds.h)
-		{
-			ok = true;
-			break;
-		}
-	}
-	if (ok)
-		SDL_SetWindowPosition(sdl_window, savedWindowX + borderLeft, savedWindowY + borderTop);
-}
-
-void SaveWindowPosition()
-{
-	int x, y;
-	SDL_GetWindowPosition(sdl_window, &x, &y);
-
-	int borderTop, borderLeft;
-	SDL_GetWindowBordersSize(sdl_window, &borderTop, &borderLeft, nullptr, nullptr);
-
-	Client::Ref().SetPref("WindowX", x - borderLeft);
-	Client::Ref().SetPref("WindowY", y - borderTop);
 }
 
 void CalculateMousePosition(int *x, int *y)
@@ -246,7 +201,6 @@ void RecreateWindow()
 		SDL_DestroyRenderer(sdl_renderer);
 	if (sdl_window)
 	{
-		SaveWindowPosition();
 		SDL_DestroyWindow(sdl_window);
 	}
 
@@ -261,9 +215,6 @@ void RecreateWindow()
 	//Uncomment this to enable resizing
 	//SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
 	//SDL_SetWindowResizable(sdl_window, SDL_TRUE);
-
-	if (!Client::Ref().IsFirstRun())
-		LoadWindowPosition();
 }
 
 unsigned int GetTicks()
@@ -271,90 +222,12 @@ unsigned int GetTicks()
 	return SDL_GetTicks();
 }
 
-std::map<ByteString, ByteString> readArguments(int argc, char * argv[])
-{
-	std::map<ByteString, ByteString> arguments;
-
-	//Defaults
-	arguments["scale"] = "";
-	arguments["proxy"] = "";
-	arguments["nohud"] = "false"; //the nohud, sound, and scripts commands currently do nothing.
-	arguments["sound"] = "false";
-	arguments["kiosk"] = "false";
-	arguments["redirect"] = "false";
-	arguments["scripts"] = "false";
-	arguments["open"] = "";
-	arguments["ddir"] = "";
-	arguments["ptsave"] = "";
-	arguments["font"] = "";
-
-	for (int i=1; i<argc; i++)
-	{
-		if (!strncmp(argv[i], "scale:", 6) && argv[i]+6)
-		{
-			arguments["scale"] = argv[i]+6;
-		}
-		if (!strncmp(argv[i], "font:", 5) && argv[i]+5)
-		{
-			arguments["font"] = argv[i]+5;
-		}
-		else if (!strncmp(argv[i], "proxy:", 6))
-		{
-			if(argv[i]+6)
-				arguments["proxy"] = argv[i]+6;
-			else
-				arguments["proxy"] = "false";
-		}
-		else if (!strncmp(argv[i], "nohud", 5))
-		{
-			arguments["nohud"] = "true";
-		}
-		else if (!strncmp(argv[i], "kiosk", 5))
-		{
-			arguments["kiosk"] = "true";
-		}
-		else if (!strncmp(argv[i], "redirect", 8))
-		{
-			arguments["redirect"] = "true";
-		}
-		else if (!strncmp(argv[i], "sound", 5))
-		{
-			arguments["sound"] = "true";
-		}
-		else if (!strncmp(argv[i], "scripts", 8))
-		{
-			arguments["scripts"] = "true";
-		}
-		else if (!strncmp(argv[i], "open", 5) && i+1<argc)
-		{
-			arguments["open"] = argv[i+1];
-			i++;
-		}
-		else if (!strncmp(argv[i], "ddir", 5) && i+1<argc)
-		{
-			arguments["ddir"] = argv[i+1];
-			i++;
-		}
-		else if (!strncmp(argv[i], "ptsave", 7) && i+1<argc)
-		{
-			arguments["ptsave"] = argv[i+1];
-			i++;
-			break;
-		}
-		else if (!strncmp(argv[i], "disable-network", 16))
-		{
-			arguments["disable-network"] = "true";
-		}
-	}
-	return arguments;
-}
-
 int elapsedTime = 0, currentTime = 0, lastTime = 0, currentFrame = 0;
 unsigned int lastTick = 0;
 unsigned int lastFpsUpdate = 0;
 float fps = 0;
 ui::Engine * engine = NULL;
-bool showLargeScreenDialog = false;
+bool showDoubleScreenDialog = false;
 float currentWidth, currentHeight;
 
 int mousex = 0, mousey = 0;
@@ -484,19 +357,6 @@ void EventProcess(SDL_Event event)
 	}
 }
 
-void LargeScreenDialog()
-{
-	StringBuilder message;
-	message << "Switching to " << scale << "x size mode since your screen was determined to be large enough: ";
-	message << desktopWidth << "x" << desktopHeight << " detected, " << WINDOWW*scale << "x" << WINDOWH*scale << " required";
-	message << "\nTo undo this, hit Cancel. You can change this in settings at any time.";
-	if (!ConfirmPrompt::Blocking("Large screen detected", message.Build()))
-	{
-		Client::Ref().SetPref("Scale", 1);
-		engine->SetScale(1);
-	}
-}
-
 void EngineProcess()
 {
 	double frameTimeAvg = 0.0f, correctedFrameTimeAvg = 0.0f;
@@ -549,12 +409,10 @@ void EngineProcess()
 		if (frameStart - lastTick > 100)
 		{
 			lastTick = frameStart;
-			Client::Ref().Tick();
 		}
-		if (showLargeScreenDialog)
+		if (showDoubleScreenDialog)
 		{
-			showLargeScreenDialog = false;
-			LargeScreenDialog();
+			showDoubleScreenDialog = false;
 		}
 	}
 #ifdef DEBUG
@@ -562,198 +420,32 @@ void EngineProcess()
 #endif
 }
 
-void BlueScreen(String detailMessage)
-{
-	ui::Engine * engine = &ui::Engine::Ref();
-	engine->g->fillrect(0, 0, engine->GetWidth(), engine->GetHeight(), 17, 114, 169, 210);
-
-	String errorTitle = "ERROR";
-	String errorDetails = "Details: " + detailMessage;
-	String errorHelp = "An unrecoverable fault has occurred, please report the error by visiting the website below\n"
-		SCHEME SERVER;
-	int currentY = 0, width, height;
-	int errorWidth = 0;
-	Graphics::textsize(errorHelp, errorWidth, height);
-
-	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorTitle.c_str(), 255, 255, 255, 255);
-	Graphics::textsize(errorTitle, width, height);
-	currentY += height + 4;
-
-	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorDetails.c_str(), 255, 255, 255, 255);
-	Graphics::textsize(errorTitle, width, height);
-	currentY += height + 4;
-
-	engine->g->drawtext((engine->GetWidth()/2)-(errorWidth/2), ((engine->GetHeight()/2)-100) + currentY, errorHelp.c_str(), 255, 255, 255, 255);
-	Graphics::textsize(errorTitle, width, height);
-	currentY += height + 4;
-
-	//Death loop
-	SDL_Event event;
-	while(true)
-	{
-		while (SDL_PollEvent(&event))
-			if(event.type == SDL_QUIT)
-				exit(-1);
-#ifdef OGLI
-		blit();
-#else
-		blit(engine->g->vid);
-#endif
-	}
-}
-
-void SigHandler(int signal)
-{
-	switch(signal){
-	case SIGSEGV:
-		BlueScreen("Memory read/write error");
-		break;
-	case SIGFPE:
-		BlueScreen("Floating point exception");
-		break;
-	case SIGILL:
-		BlueScreen("Program execution exception");
-		break;
-	case SIGABRT:
-		BlueScreen("Unexpected program abort");
-		break;
-	}
-}
-
-void ChdirToDataDirectory()
-{
-#ifdef MACOSX
-	FSRef ref;
-	OSType folderType = kApplicationSupportFolderType;
-	char path[PATH_MAX];
-
-	FSFindFolder( kUserDomain, folderType, kCreateFolder, &ref );
-
-	FSRefMakePath( &ref, (UInt8*)&path, PATH_MAX );
-
-	std::string tptPath = std::string(path) + "/The Powder Toy";
-	mkdir(tptPath.c_str(), 0755);
-	chdir(tptPath.c_str());
-#endif
-}
-
-constexpr int SCALE_MAXIMUM = 10;
-constexpr int SCALE_MARGIN = 30;
-
-int GuessBestScale()
-{
-	const int widthNoMargin = desktopWidth - SCALE_MARGIN;
-	const int widthGuess = widthNoMargin / WINDOWW;
-
-	const int heightNoMargin = desktopHeight - SCALE_MARGIN;
-	const int heightGuess = heightNoMargin / WINDOWH;
-
-	int guess = std::min(widthGuess, heightGuess);
-	if(guess < 1 || guess > SCALE_MAXIMUM)
-		guess = 1;
-
-	return guess;
-}
-
 int main(int argc, char * argv[])
 {
-#if defined(_DEBUG) && defined(_MSC_VER)
-	_CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_DEBUG);
-#endif
 	currentWidth = WINDOWW;
 	currentHeight = WINDOWH;
-
-
-	std::map<ByteString, ByteString> arguments = readArguments(argc, argv);
-
-	if(arguments["ddir"].length())
-#ifdef WIN
-		_chdir(arguments["ddir"].c_str());
-#else
-		chdir(arguments["ddir"].c_str());
-#endif
-	else
-		ChdirToDataDirectory();
-
-	scale = Client::Ref().GetPrefInteger("Scale", 1);
-	resizable = Client::Ref().GetPrefBool("Resizable", false);
-	fullscreen = Client::Ref().GetPrefBool("Fullscreen", false);
-	altFullscreen = Client::Ref().GetPrefBool("AltFullscreen", false);
-	forceIntegerScaling = Client::Ref().GetPrefBool("ForceIntegerScaling", true);
-
-
-	if(arguments["kiosk"] == "true")
+	
+	scale = 1;
+	if (argc >= 3)
 	{
-		fullscreen = true;
-		Client::Ref().SetPref("Fullscreen", fullscreen);
-	}
-
-	if(arguments["redirect"] == "true")
-	{
-		freopen("stdout.log", "w", stdout);
-		freopen("stderr.log", "w", stderr);
-	}
-
-	if(arguments["scale"].length())
-	{
-		scale = arguments["scale"].ToNumber<int>();
-		Client::Ref().SetPref("Scale", scale);
-	}
-
-	ByteString proxyString = "";
-	if(arguments["proxy"].length())
-	{
-		if(arguments["proxy"] == "false")
+		std::istringstream ss(argv[2]);
+		int buf;
+		if (ss >> buf)
 		{
-			proxyString = "";
-			Client::Ref().SetPref("Proxy", "");
-		}
-		else
-		{
-			proxyString = (arguments["proxy"]);
-			Client::Ref().SetPref("Proxy", arguments["proxy"]);
+			scale = buf;
 		}
 	}
-	else if(Client::Ref().GetPrefString("Proxy", "").length())
-	{
-		proxyString = (Client::Ref().GetPrefByteString("Proxy", ""));
-	}
-
-	bool disableNetwork = false;
-	if (arguments.find("disable-network") != arguments.end())
-		disableNetwork = true;
-
-	Client::Ref().Initialise(proxyString, disableNetwork);
+	resizable = false;
+	fullscreen = false;
+	altFullscreen = false;
+	forceIntegerScaling = true;
 
 	// TODO: maybe bind the maximum allowed scale to screen size somehow
-	if(scale < 1 || scale > SCALE_MAXIMUM)
+	if(scale < 1 || scale > 10)
 		scale = 1;
 
 	SDLOpen();
 
-	if (Client::Ref().IsFirstRun())
-	{
-		scale = GuessBestScale();
-		if (scale > 1)
-		{
-			Client::Ref().SetPref("Scale", scale);
-			SDL_SetWindowSize(sdl_window, WINDOWW * scale, WINDOWH * scale);
-			showLargeScreenDialog = true;
-		}
-	}
-
-#ifdef OGLI
-	SDL_GL_SetAttribute (SDL_GL_DOUBLEBUFFER, 1);
-	//glScaled(2.0f, 2.0f, 1.0f);
-#endif
-#if defined(OGLI) && !defined(MACOSX)
-	int status = glewInit();
-	if(status != GLEW_OK)
-	{
-		fprintf(stderr, "Initializing Glew: %d\n", status);
-		exit(-1);
-	}
-#endif
 	ui::Engine::Ref().g = new Graphics();
 	ui::Engine::Ref().Scale = scale;
 	ui::Engine::Ref().SetResizable(resizable);
@@ -764,130 +456,22 @@ int main(int argc, char * argv[])
 	engine = &ui::Engine::Ref();
 	engine->SetMaxSize(desktopWidth, desktopHeight);
 	engine->Begin(WINDOWW, WINDOWH);
-	engine->SetFastQuit(Client::Ref().GetPrefBool("FastQuit", true));
-
-#if !defined(DEBUG) && !defined(_DEBUG)
-	//Get ready to catch any dodgy errors
-	signal(SIGSEGV, SigHandler);
-	signal(SIGFPE, SigHandler);
-	signal(SIGILL, SigHandler);
-	signal(SIGABRT, SigHandler);
-#endif
-
-#ifdef X86_SSE
-	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-#endif
-#ifdef X86_SSE3
-	_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-#endif
+	engine->SetFastQuit(true);
 
 	GameController * gameController = NULL;
-#if !defined(DEBUG) && !defined(_DEBUG)
-	try {
-#endif
 
-		gameController = new GameController();
-		engine->ShowWindow(gameController->GetView());
-
-		if(arguments["open"].length())
-		{
-#ifdef DEBUG
-			std::cout << "Loading " << arguments["open"] << std::endl;
-#endif
-			if(Client::Ref().FileExists(arguments["open"]))
-			{
-				try
-				{
-					std::vector<unsigned char> gameSaveData = Client::Ref().ReadFile(arguments["open"]);
-					if(!gameSaveData.size())
-					{
-						new ErrorMessage("Error", "Could not read file");
-					}
-					else
-					{
-						SaveFile * newFile = new SaveFile(arguments["open"]);
-						GameSave * newSave = new GameSave(gameSaveData);
-						newFile->SetGameSave(newSave);
-						gameController->LoadSaveFile(newFile);
-						delete newFile;
-					}
-
-				}
-				catch(std::exception & e)
-				{
-					new ErrorMessage("Error", "Could not open save file:\n" + ByteString(e.what()).FromUtf8()) ;
-				}
-			}
-			else
-			{
-				new ErrorMessage("Error", "Could not open file");
-			}
-		}
-
-		if(arguments["ptsave"].length())
-		{
-			engine->g->fillrect((engine->GetWidth()/2)-101, (engine->GetHeight()/2)-26, 202, 52, 0, 0, 0, 210);
-			engine->g->drawrect((engine->GetWidth()/2)-100, (engine->GetHeight()/2)-25, 200, 50, 255, 255, 255, 180);
-			engine->g->drawtext((engine->GetWidth()/2)-(Graphics::textwidth("Loading save...")/2), (engine->GetHeight()/2)-5, "Loading save...", style::Colour::InformationTitle.Red, style::Colour::InformationTitle.Green, style::Colour::InformationTitle.Blue, 255);
-
-#ifdef OGLI
-			blit();
-#else
-			blit(engine->g->vid);
-#endif
-			ByteString ptsaveArg = arguments["ptsave"];
-			try
-			{
-				ByteString saveIdPart;
-				if (ByteString::Split split = arguments["ptsave"].SplitBy(':'))
-				{
-					if (split.Before() != "ptsave")
-						throw std::runtime_error("Not a ptsave link");
-					saveIdPart = split.After().SplitBy('#').Before();
-				}
-				else
-					throw std::runtime_error("Invalid save link");
-
-				if (!saveIdPart.size())
-					throw std::runtime_error("No Save ID");
-#ifdef DEBUG
-				std::cout << "Got Ptsave: id: " << saveIdPart << std::endl;
-#endif
-				int saveId = saveIdPart.ToNumber<int>();
-
-				SaveInfo * newSave = Client::Ref().GetSave(saveId, 0);
-				if (!newSave)
-					throw std::runtime_error("Could not load save info");
-				std::vector<unsigned char> saveData = Client::Ref().GetSaveData(saveId, 0);
-				if (!saveData.size())
-					throw std::runtime_error(("Could not load save\n" + Client::Ref().GetLastError()).ToUtf8());
-				GameSave * newGameSave = new GameSave(saveData);
-				newSave->SetGameSave(newGameSave);
-
-				gameController->LoadSave(newSave);
-				delete newSave;
-			}
-			catch (std::exception & e)
-			{
-				new ErrorMessage("Error", ByteString(e.what()).FromUtf8());
-			}
-		}
-
-		EngineProcess();
-		SaveWindowPosition();
-
-#if !defined(DEBUG) && !defined(_DEBUG)
-	}
-	catch(std::exception& e)
+	if (argc >= 2)
 	{
-		BlueScreen(ByteString(e.what()).FromUtf8());
+		engine->ShowWindow(new FontEditor(argv[1]));
 	}
-#endif
+	else
+	{
+		throw std::runtime_error("path to font.cpp not supplied");
+	}
 
-	Client::Ref().SetPref("Scale", ui::Engine::Ref().GetScale());
+	EngineProcess();
 	ui::Engine::Ref().CloseWindow();
 	delete gameController;
 	delete ui::Engine::Ref().g;
-	Client::Ref().Shutdown();
 	return 0;
 }

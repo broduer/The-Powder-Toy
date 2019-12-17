@@ -15,11 +15,6 @@
 #include "gui/interface/Keys.h"
 #include "graphics/Graphics.h"
 
-#ifdef FONTEDITOR
-unsigned char *font_data;
-unsigned short *font_ptrs;
-unsigned int (*font_ranges)[2];
-
 void FontEditor::ReadHeader(ByteString header)
 {
 	std::fstream file;
@@ -557,4 +552,3 @@ void FontEditor::Save()
 	WriteHeader(header, tmpFontData, tmpFontPtrs, tmpFontRanges);
 	savedButton->SetToggleState(true);
 }
-#endif

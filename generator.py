@@ -14,7 +14,7 @@ def generateElements(elementFiles, outputCpp, outputH):
 #include <vector>
 
 #include "simulation/SimulationData.h"
-#include "simulation/elements/Element.h"
+#include "simulation/Element.h"
 
 """
 

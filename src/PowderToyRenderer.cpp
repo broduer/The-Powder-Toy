@@ -1,3 +1,4 @@
+#include "Config.h"
 #include "graphics/Graphics.h"
 #include "graphics/Renderer.h"
 
@@ -7,7 +8,6 @@
 #include <vector>
 
 #include "common/String.h"
-#include "Config.h"
 #include "Format.h"
 #include "gui/interface/Engine.h"
 

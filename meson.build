@@ -1,50 +1,122 @@
-project(
-	'the-powder-toy',
-	['c', 'cpp'],
-	version: '94.1.343' # must be of the form 'major.minor.build.whatever'
-)
+project('the-powder-toy', ['c', 'cpp'])
 
 cpp_compiler = meson.get_compiler('cpp')
 
-common_version = meson.project_version().split('.')
-project_cpp_arg = [
-	'-D_64BIT',
-	'-DLIN',
-	'-DSAVE_VERSION=' + common_version[0],
-	'-DMINOR_VERSION=' + common_version[1],
-	'-DBUILD_NUM=' + common_version[2],
-	'-DDEBUG',
-	'-DX86',
-	'-DX86_SSE',
-	'-DX86_SSE2',
-	'-DX86_SSE3',
-	'-DSDL_INC',
-#	'-DOGLI',
-#	'-DOGLR',
-#	'-DPIX32OGL',
-#	'-DSNAPSHOT',
-#	'-DBETA',
-#	'-DNO_INSTALL_CHECK',
-#	'-DNOHTTP',
-	'-DSNAPSHOT_ID=0',
-	'-DMOD_ID=0',
-	'-msse',
-	'-msse2',
-	'-msse3',
-	'-march=native',
-]
+uopt_platform = get_option('system')
+if uopt_platform == 'auto'
+	if host_machine.system() in ['linux', 'freebsd']
+		uopt_platform = 'linux'
+	elif host_machine.system() in ['windows']
+		uopt_platform = 'windows'
+	elif host_machine.system() in ['darwin']
+		uopt_platform = 'mac'
+	else
+		error('unsupported platform')
+	endif
+endif
+copt_x86 = host_machine.cpu_family() in ['x86_64', 'x86']
+copt_64bit = host_machine.cpu_family() in ['x86_64', 'aarch64']
+uopt_native = get_option('native')
+uopt_x86_sse = get_option('x86_sse')
+if uopt_x86_sse == 'auto'
+	uopt_x86_sse_level = 20
+	# idk lol
+	#if copt_64bit
+	#	uopt_x86_sse_level = 20
+	#else
+	#	uopt_x86_sse_level = 0
+	#endif
+elif uopt_x86_sse == 'sse3'
+	uopt_x86_sse_level = 30
+elif uopt_x86_sse == 'sse2'
+	uopt_x86_sse_level = 20
+elif uopt_x86_sse == 'sse'
+	uopt_x86_sse_level = 10
+elif uopt_x86_sse == 'none'
+	uopt_x86_sse_level = 0
+endif
+if not copt_x86 or uopt_native
+	uopt_x86_sse_level = 0
+endif
+uopt_lua = get_option('lua')
+if uopt_lua == 'luajit'
+	lua_opt_dep = [ dependency('luajit') ]
+elif uopt_lua == 'lua5.2'
+	lua_opt_dep = [ dependency('lua5.2') ]
+elif uopt_lua == 'lua5.1'
+	lua_opt_dep = [ dependency('lua5.1') ]
+else
+	lua_opt_dep = []
+endif
+uopt_http = get_option('http')
+if uopt_http
+	curl_opt_dep = [ dependency('libcurl') ]
+else
+	curl_opt_dep = []
+endif
+uopt_fftw = get_option('gravfft')
+if uopt_fftw
+	fftw_opt_dep = [ dependency('fftw3f') ]
+else
+	fftw_opt_dep = []
+endif
 
+conf_data = configuration_data()
+conf_data.set('NOHTTP', not uopt_http)
+conf_data.set('OGLI', false)
+conf_data.set('OGLR', false)
+conf_data.set('PIX32OGL', false)
+conf_data.set('BETA', get_option('beta'))
+conf_data.set('NO_INSTALL_CHECK', not get_option('install_check'))
+conf_data.set('GRAVFFT', uopt_fftw)
+conf_data.set('LUACONSOLE', uopt_lua != 'none')
+conf_data.set('LIN', uopt_platform == 'linux')
+conf_data.set('WIN', uopt_platform == 'windows')
+conf_data.set('X86', copt_x86)
+conf_data.set('X86_SSE3', uopt_x86_sse_level >= 30)
+conf_data.set('X86_SSE2', uopt_x86_sse_level >= 20)
+conf_data.set('X86_SSE', uopt_x86_sse_level >= 10)
+conf_data.set('NATIVE', uopt_native)
+conf_data.set('_64BIT', copt_64bit)
+conf_data.set('SAVE_VERSION', get_option('version_major'))
+conf_data.set('MINOR_VERSION', get_option('version_minor'))
+conf_data.set('BUILD_NUM', get_option('version_build'))
+conf_data.set('MOD_ID', get_option('mod_id'))
+conf_data.set('DEBUG', get_option('debug'))
+conf_data.set('SNAPSHOT', get_option('snapshot'))
+conf_data.set('SNAPSHOT_ID', get_option('snapshot_id'))
+conf_data.set('FUTURE_SAVE_VERSION', get_option('future_major'))
+conf_data.set('FUTURE_MINOR_VERSION', get_option('future_minor'))
+config_inc = configure_file(
+	input: 'src/Config.h.in',
+	output: 'Config.h',
+	configuration: conf_data
+)
+
+project_cpp_arg = []
+if uopt_x86_sse_level >= 30
+	project_cpp_arg += '-msse3'
+endif
+if uopt_x86_sse_level >= 20
+	project_cpp_arg += '-msse2'
+endif
+if uopt_x86_sse_level >= 10
+	project_cpp_arg += '-msse'
+endif
+if uopt_native
+	project_cpp_arg += '-march=native'
+endif
 project_inc = include_directories([
 	'src',
 	'data',
 	'generated',
 ])
-project_link_arg = [
-	'-m64',
-#	'-m32',
-]
 project_dep = [
-	dependency('threads')
+	dependency('threads'),
+	dependency('zlib'),
+	lua_opt_dep,
+	curl_opt_dep,
+	cpp_compiler.find_library('bz2'),
 ]
 
 simulation_elem_src = []
@@ -89,9 +161,6 @@ simulation_tool_src = [
 	'src/simulation/simtools/SimTool.cpp',
 ]
 
-simulation_cpp_arg = [
-	'-DGRAVFFT',
-]
 simulation_lib = static_library(
 	'simulation',
 	sources: [
@@ -107,25 +176,14 @@ simulation_lib = static_library(
 	],
 	dependencies: [
 		project_dep,
-		dependency('fftw3f'),
+		fftw_opt_dep,
 	],
 	include_directories: project_inc,
-	cpp_args: [
-		project_cpp_arg,
-		simulation_cpp_arg,
-	],
-	link_args: project_link_arg,
+	cpp_args: project_cpp_arg,
 )
 simulation_dep = declare_dependency(link_with: simulation_lib)
 
 client_src = [
-	'src/client/MD5.cpp',
-	'src/client/SaveFile.cpp',
-	'src/client/SaveInfo.cpp',
-	'src/client/ThumbnailRendererTask.cpp',
-]
-
-http_src = [
 	'src/client/http/APIRequest.cpp',
 	'src/client/http/AvatarRequest.cpp',
 	'src/client/http/GetUserInfoRequest.cpp',
@@ -134,6 +192,10 @@ http_src = [
 	'src/client/http/RequestManager.cpp',
 	'src/client/http/SaveUserInfoRequest.cpp',
 	'src/client/http/ThumbnailRequest.cpp',
+	'src/client/MD5.cpp',
+	'src/client/SaveFile.cpp',
+	'src/client/SaveInfo.cpp',
+	'src/client/ThumbnailRendererTask.cpp',
 ]
 
 graphics_lib = static_library(
@@ -147,7 +209,6 @@ graphics_lib = static_library(
 	dependencies: project_dep,
 	include_directories: project_inc,
 	cpp_args: project_cpp_arg,
-	link_args: project_link_arg,
 )
 graphics_dep = declare_dependency(link_with: graphics_lib)
 
@@ -170,7 +231,6 @@ common_lib = static_library(
 	dependencies: project_dep,
 	include_directories: project_inc,
 	cpp_args: project_cpp_arg,
-	link_args: project_link_arg,
 )
 common_dep = declare_dependency(link_with: common_lib)
 
@@ -240,7 +300,6 @@ interface_lib = static_library(
 	],
 	include_directories: project_inc,
 	cpp_args: project_cpp_arg,
-	link_args: project_link_arg,
 )
 interface_dep = declare_dependency(link_with: interface_lib)
 
@@ -312,7 +371,6 @@ executable(
 		'src/tasks/TaskWindow.cpp',
 		'src/Update.cpp',
 		client_src,
-		http_src,
 		luaconsole_src,
 		'src/graphics/Renderer.cpp', # see [note 1]
 		'src/simulation/Simulation.cpp', # see [note 1]
@@ -323,29 +381,17 @@ executable(
 		'generated/ToolClasses.cpp',
 	],
 	dependencies: [
+#		cpp_compiler.find_library('m'),
+#		cpp_compiler.find_library('dl'),
+#		cpp_compiler.find_library('rt'),
 		project_dep,
-		dependency('luajit'),
-		dependency('zlib'),
-		dependency('libcurl'),
-		cpp_compiler.find_library('m'),
-		cpp_compiler.find_library('dl'),
-		cpp_compiler.find_library('bz2'),
-		cpp_compiler.find_library('rt'),
 		graphics_dep,
 		common_dep,
 		simulation_dep,
 		interface_dep,
 	],
 	include_directories: project_inc,
-	cpp_args: [
-		project_cpp_arg,
-		simulation_cpp_arg,
-		'-DLUAJIT',
-		'-DLUA_R_INCL',
-		'-DLUACONSOLE',
-#		'-DLUA_COMPAT_ALL',
-	],
-	link_args: project_link_arg,
+	cpp_args: project_cpp_arg,
 )
 
 executable(
@@ -360,8 +406,6 @@ executable(
 	],
 	dependencies: [
 		project_dep,
-		dependency('zlib'),
-		cpp_compiler.find_library('bz2'),
 		graphics_dep,
 		common_dep,
 		simulation_dep,
@@ -369,10 +413,8 @@ executable(
 	include_directories: project_inc,
 	cpp_args: [
 		project_cpp_arg,
-		simulation_cpp_arg,
 		'-DRENDERER'
 	],
-	link_args: project_link_arg,
 )
 
 executable(
@@ -384,8 +426,6 @@ executable(
 	],
 	dependencies: [
 		project_dep,
-		dependency('zlib'),
-		cpp_compiler.find_library('bz2'),
 		graphics_dep,
 		common_dep,
 		interface_dep,
@@ -394,11 +434,10 @@ executable(
 	cpp_args: [
 		project_cpp_arg,
 		'-DFONTEDITOR',
-		'-DNOHTTP',
 	],
-	link_args: project_link_arg,
 )
 
 # [note 1]: these source files depend on the RENDERER and FONTEDITOR macros,
 #           i.e. they behave differently based on which target is using them,
 #           so they can't be part of the common static libraries
+

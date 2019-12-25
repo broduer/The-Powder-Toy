@@ -1,5 +1,6 @@
 #ifndef LUAEVENTS_H
 #define LUAEVENTS_H
+#include "Config.h"
 
 #include "common/String.h"
 

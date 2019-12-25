@@ -1,3 +1,4 @@
+#include "Config.h"
 #include <ctime>
 #include <climits>
 #ifdef WIN
@@ -13,7 +14,6 @@
 #endif
 
 #include <iostream>
-#include "Config.h"
 #if defined(LIN)
 #include "icon.h"
 #endif

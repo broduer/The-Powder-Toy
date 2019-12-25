@@ -10,6 +10,7 @@ def generateElements(elementFiles, outputCpp, outputH):
 
 #ifndef ELEMENTCLASSES_H
 #define ELEMENTCLASSES_H
+#include "Config.h"
 
 #include <vector>
 
@@ -149,6 +150,7 @@ def generateTools(toolFiles, outputCpp, outputH):
 
 	toolHeader = """#ifndef TOOLCLASSES_H
 #define TOOLCLASSES_H
+#include "Config.h"
 
 #include <vector>
 

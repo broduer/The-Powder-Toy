@@ -1,5 +1,6 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
+#include "Config.h"
 
 #include <cstring>
 #include <cstddef>

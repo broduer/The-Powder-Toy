@@ -1,3 +1,4 @@
+#include "Config.h"
 #include "common/tpt-minmax.h"
 
 #include <map>

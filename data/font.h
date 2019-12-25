@@ -1,4 +1,5 @@
 #pragma once
+#include "Config.h"
 #define FONT_H 12
 #ifndef FONTEDITOR
 extern const unsigned char font_data[];

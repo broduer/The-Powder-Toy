@@ -2,6 +2,7 @@ project('the-powder-toy', ['c', 'cpp'])
 
 cpp_compiler = meson.get_compiler('cpp')
 
+uopt_static = get_option('static')
 uopt_platform = get_option('system')
 if uopt_platform == 'auto'
 	if host_machine.system() in ['linux', 'freebsd']
@@ -40,23 +41,23 @@ if not copt_x86 or uopt_native
 endif
 uopt_lua = get_option('lua')
 if uopt_lua == 'luajit'
-	lua_opt_dep = [ dependency('luajit') ]
+	lua_opt_dep = [ dependency('luajit', static: uopt_static) ]
 elif uopt_lua == 'lua5.2'
-	lua_opt_dep = [ dependency('lua5.2') ]
+	lua_opt_dep = [ dependency('lua5.2', static: uopt_static) ]
 elif uopt_lua == 'lua5.1'
-	lua_opt_dep = [ dependency('lua5.1') ]
+	lua_opt_dep = [ dependency('lua5.1', static: uopt_static) ]
 else
 	lua_opt_dep = []
 endif
 uopt_http = get_option('http')
 if uopt_http
-	curl_opt_dep = [ dependency('libcurl') ]
+	curl_opt_dep = [ dependency('libcurl', static: uopt_static) ]
 else
 	curl_opt_dep = []
 endif
 uopt_fftw = get_option('gravfft')
 if uopt_fftw
-	fftw_opt_dep = [ dependency('fftw3f') ]
+	fftw_opt_dep = [ dependency('fftw3f', static: uopt_static) ]
 else
 	fftw_opt_dep = []
 endif
@@ -112,11 +113,11 @@ project_inc = include_directories([
 	'generated',
 ])
 project_dep = [
-	dependency('threads'),
-	dependency('zlib'),
+	dependency('threads', static: uopt_static),
+	dependency('zlib', static: uopt_static),
 	lua_opt_dep,
 	curl_opt_dep,
-	cpp_compiler.find_library('bz2'),
+	cpp_compiler.find_library('bz2', static: uopt_static),
 ]
 
 simulation_elem_src = []
@@ -294,9 +295,7 @@ interface_lib = static_library(
 	],
 	dependencies: [
 		project_dep,
-		dependency('sdl2'),
-		dependency('GL'),
-		dependency('x11'),
+		dependency('sdl2', static: uopt_static),
 	],
 	include_directories: project_inc,
 	cpp_args: project_cpp_arg,
@@ -384,6 +383,8 @@ executable(
 #		cpp_compiler.find_library('m'),
 #		cpp_compiler.find_library('dl'),
 #		cpp_compiler.find_library('rt'),
+#		dependency('x11'),
+#		dependency('GL'),
 		project_dep,
 		graphics_dep,
 		common_dep,

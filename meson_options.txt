@@ -1,3 +1,4 @@
+option('static', type: 'boolean', value: false, description: 'Build statically')
 option('beta', type: 'boolean', value: false, description: 'Beta build')
 option('install_check', type: 'boolean', value: true, description: 'Do install check on startup')
 option('http', type: 'boolean', value: true, description: 'Enable HTTP (libcurl)')
